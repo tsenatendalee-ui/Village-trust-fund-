@@ -4,33 +4,47 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/**
+ * Fail-closed safety gate.
+ * Configuration edits and financial approvals remain disabled until audited persistence,
+ * authorization, reconciliation, and collector synchronization are implemented.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                var amount by remember { mutableStateOf("100") }
-                var period by remember { mutableStateOf("7") }
-                var grace by remember { mutableStateOf("7") }
-                var penalty by remember { mutableStateOf("10") }
-                var status by remember { mutableStateOf("Local prototype - no collector sync configured") }
-                Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Village Trust Fund", style = MaterialTheme.typography.headlineSmall)
-                    Text("Supervisor dashboard", style = MaterialTheme.typography.titleMedium)
-                    Text(status)
-                    OutlinedTextField(amount, { amount = it }, label = { Text("Contribution (ETB)") })
-                    OutlinedTextField(period, { period = it }, label = { Text("Period (days)") })
-                    OutlinedTextField(grace, { grace = it }, label = { Text("Grace days") })
-                    OutlinedTextField(penalty, { penalty = it }, label = { Text("Penalty (ETB)") })
-                    Button(onClick = { status = "Configuration saved locally (version 1)." }) { Text("Save configuration") }
-                    Text("Reports and ledger")
-                    Text("No collector reports received yet.")
-                    Text("Prototype only: live sync, persistent database, and audited payment posting are not enabled.")
+                Surface(color = Color(0xFFFFF4E5), modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text("Village Trust Fund", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text("VT Supervisor", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "NOT APPROVED FOR REAL FINANCIAL ADMINISTRATION",
+                            color = Color(0xFF9B1C1C),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text("This build does not persist configuration, receive collector reports, or maintain an auditable master ledger. The apparent Save action in the prototype did not actually save data.")
+                        Text("Before supervisor controls can be enabled, the app needs:")
+                        Text("• Authenticated supervisor identity and role-based permissions")
+                        Text("• Durable, encrypted ledger and versioned configuration history")
+                        Text("• Signature, sequence, replay, and full-batch validation for incoming reports")
+                        Text("• Cash reconciliation, approvals, reversals, and immutable audit events")
+                        Text("• Backup/restore, key management, and tested disaster recovery")
+                        Text("• Independent security and accounting tests")
+                        Text("Do not use this prototype to manage real member funds.", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
