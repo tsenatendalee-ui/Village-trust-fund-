@@ -3,6 +3,8 @@ package org.vt.collector
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,6 +20,7 @@ import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 import java.security.SecureRandom
+import java.security.MessageDigest
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,6 +45,9 @@ private fun generateMemberId(existingMembers: String): String {
     throw IllegalStateException("All four-digit member IDs are in use.")
 }
 
+private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
 private fun isAmharicFullName(value: String): Boolean {
     val parts = value.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     return parts.size >= 2 && parts.all { part -> part.all { ch -> ch in '\u1200'..'\u137F' } }
@@ -64,7 +70,32 @@ private fun Collector(ctx: Context) {
     var message by remember { mutableStateOf("") }
     val am = lang == "am"
     fun tr(en: String, amh: String) = if (am) amh else en
-    val amount = db.getInt("installment", 100)
+    var amount by remember { mutableIntStateOf(db.getInt("installment", 100)) }
+    var transferMessage by remember { mutableStateOf("") }
+    var pendingExport by remember { mutableStateOf("") }
+    val exportReport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) try {
+            ctx.contentResolver.openOutputStream(uri)?.use { it.write(pendingExport.toByteArray(Charsets.UTF_8)) }
+            transferMessage = "Report exported. Transfer this JSON file to the Supervisor."
+        } catch (e: Exception) { transferMessage = "Export failed: ${e.message}" }
+    }
+    val importRules = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try {
+            val raw = ctx.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+            val envelope = JSONObject(raw)
+            val payload = envelope.getJSONObject("payload")
+            require(envelope.optString("type") == "VT_RULE_UPDATE" && envelope.optInt("schemaVersion") == 1)
+            require(sha256(payload.toString()) == envelope.optString("sha256")) { "File integrity check failed." }
+            val newAmount = payload.getInt("weeklyInstallment")
+            val newGrace = payload.getInt("graceDays")
+            val newPenalty = payload.getInt("penaltyBirr")
+            require(newAmount > 0 && newGrace >= 0 && newPenalty >= 0)
+            val ok = db.edit().putInt("installment", newAmount).putInt("grace", newGrace)
+                .putInt("penalty", newPenalty).putInt("rulesVersion", payload.optInt("configVersion", 1)).commit()
+            if (ok) { amount = newAmount; transferMessage = "Rules update received and saved. Version " + payload.optInt("configVersion", 1) }
+            else transferMessage = "Could not save the rules update."
+        } catch (e: Exception) { transferMessage = "Update rejected: ${e.message}" }
+    }
     fun savedPayments(): JSONArray = try { JSONArray(records) } catch (_: Exception) { JSONArray() }
     fun paidDatesFor(memberId: String): Set<String> {
         val out = mutableSetOf<String>()
@@ -89,7 +120,7 @@ private fun Collector(ctx: Context) {
             bottomBar = {
                 NavigationBar {
                     listOf("home" to tr("Home", "መነሻ"), "members" to tr("Members", "አባላት"),
-                        "collect" to tr("Collect", "ክፍያ"), "history" to tr("History", "ታሪክ"))
+                        "collect" to tr("Collect", "ክፍያ"), "history" to tr("History", "ታሪክ"), "transfer" to tr("Transfer", "ማስተላለፍ"))
                         .forEach { (p, label) ->
                             NavigationBarItem(selected = page == p, onClick = { page = p }, icon = {}, label = { Text(label) })
                         }
@@ -103,7 +134,7 @@ private fun Collector(ctx: Context) {
                         Text(tr("Registered members: ", "የተመዘገቡ አባላት፦ ") + (if (members.isBlank()) "0" else members.lines().size.toString()))
                         Text(tr("Payment transactions: ", "የክፍያ ግብይቶች፦ ") + savedPayments().length())
                         Text(tr("Collection day: Saturday. Each member can be allocated only once per Saturday.", "የመሰብሰቢያ ቀን፦ ቅዳሜ። አንድ አባል ለአንድ ቅዳሜ አንድ ጊዜ ብቻ ይከፍላል።"))
-                        Text(tr("Records remain on this phone; secure supervisor transfer is not yet available.", "መዝገቦቹ በዚህ ስልክ ብቻ ናቸው።"))
+                        Text(tr("Records remain on this phone until you export a report.", "ሪፖርት እስኪያወጡ ድረስ መዝገቦቹ በዚህ ስልክ ላይ ይቆያሉ።"))
                     }
                     "members" -> {
                         Text(tr("Register member", "አባል መዝግብ"), style = MaterialTheme.typography.titleLarge)
@@ -225,7 +256,27 @@ private fun Collector(ctx: Context) {
                         if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
                         Text(tr("A payment is one transaction. It allocates complete Saturday installments only; duplicate member/date allocations are rejected.", "አንድ ክፍያ አንድ ግብይት ነው። ሙሉ የቅዳሜ ክፍያዎች ብቻ ይመደባሉ፤ ድግግሞሽ ይከለከላል።"))
                     }
-                    else -> {
+                    "transfer" -> {
+                        Text(tr("Offline transfer", "ከመስመር ውጭ ማስተላለፍ"), style = MaterialTheme.typography.titleLarge)
+                        Text("Export the Collector report for the Supervisor, and import rules updates received from the Supervisor.")
+                        Button(onClick = {
+                            val payload = JSONObject().put("collectorId", "PRIMARY_COLLECTOR")
+                                .put("exportedAt", java.time.Instant.now().toString())
+                                .put("members", JSONArray(members.lines().filter { it.isNotBlank() }))
+                                .put("payments", savedPayments())
+                            pendingExport = JSONObject().put("type", "VT_REPORT").put("schemaVersion", 1)
+                                .put("payload", payload).put("sha256", sha256(payload.toString())).toString(2)
+                            exportReport.launch("VT-Collector-Report-${LocalDate.now()}.json")
+                        }, modifier = Modifier.fillMaxWidth()) { Text(tr("Send / Export report", "ሪፖርት ላክ / ወጪ አድርግ")) }
+                        Button(onClick = { importRules.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(tr("Receive rules update", "የደንብ ማሻሻያ ተቀበል"))
+                        }
+                        Text("Weekly installment: ETB $amount")
+                        Text("Grace days: " + db.getInt("grace", 0))
+                        Text("Penalty: ETB " + db.getInt("penalty", 0))
+                        if (transferMessage.isNotBlank()) Text(transferMessage, color = MaterialTheme.colorScheme.primary)
+                    }
+                    "history" -> {
                         Text(tr("Payment history", "የክፍያ ታሪክ"), style = MaterialTheme.typography.titleLarge)
                         val arr = savedPayments()
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
