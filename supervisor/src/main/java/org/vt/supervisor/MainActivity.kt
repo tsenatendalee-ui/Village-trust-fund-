@@ -1,52 +1,27 @@
 package org.vt.supervisor
-
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-/**
- * Fail-closed safety gate.
- * Configuration edits and financial approvals remain disabled until audited persistence,
- * authorization, reconciliation, and collector synchronization are implemented.
- */
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(color = Color(0xFFFFF4E5), modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text("Village Trust Fund", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                        Text("VT Supervisor", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "NOT APPROVED FOR REAL FINANCIAL ADMINISTRATION",
-                            color = Color(0xFF9B1C1C),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text("This build does not persist configuration, receive collector reports, or maintain an auditable master ledger. The apparent Save action in the prototype did not actually save data.")
-                        Text("Before supervisor controls can be enabled, the app needs:")
-                        Text("• Authenticated supervisor identity and role-based permissions")
-                        Text("• Durable, encrypted ledger and versioned configuration history")
-                        Text("• Signature, sequence, replay, and full-batch validation for incoming reports")
-                        Text("• Cash reconciliation, approvals, reversals, and immutable audit events")
-                        Text("• Backup/restore, key management, and tested disaster recovery")
-                        Text("• Independent security and accounting tests")
-                        Text("Do not use this prototype to manage real member funds.", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
+class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{Supervisor(this)}}}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun Supervisor(ctx:Context){
+ val db=ctx.getSharedPreferences("vt_supervisor",Context.MODE_PRIVATE)
+ var lang by remember{mutableStateOf(db.getString("lang","")?:"")};var picker by remember{mutableStateOf(lang.isBlank())}
+ var page by remember{mutableStateOf("home")};var amount by remember{mutableStateOf(db.getInt("amount",100).toString())};var grace by remember{mutableStateOf(db.getInt("grace",5).toString())};var penalty by remember{mutableStateOf(db.getInt("penalty",0).toString())}
+ val am=lang=="am";fun tr(e:String,a:String)=if(am)a else e
+ MaterialTheme{Scaffold(topBar={TopAppBar(title={Text("VT Supervisor")},actions={TextButton(onClick={picker=true}){Text(tr("Settings","ቅንብሮች"))}})},bottomBar={NavigationBar{listOf("home" to tr("Home","መነሻ"),"rules" to tr("Fund rules","የፈንድ ደንቦች"),"reports" to tr("Reports","ሪፖርቶች")).forEach{(p,l)->NavigationBarItem(selected=page==p,onClick={page=p},icon={},label={Text(l)})}}}){pad->Column(Modifier.fillMaxSize().padding(pad).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+ when(page){
+ "home"->{Text(tr("Supervisor dashboard","የኃላፊ ማዕከል"),style=MaterialTheme.typography.headlineSmall);Text(tr("Set fund rules and review local configuration.","የፈንድ ደንቦችን ያዘጋጁ።"));Button(onClick={page="rules"}){Text(tr("Configure fund","ፈንድ አዋቅር"))};Button(onClick={page="reports"}){Text(tr("Reports and status","ሪፖርትና ሁኔታ"))}}
+ "rules"->{Text(tr("Fund configuration","የፈንድ ቅንብር"),style=MaterialTheme.typography.titleLarge);OutlinedTextField(amount,{amount=it.filter(Char::isDigit)},label={Text(tr("Monthly installment (ETB)","ወርሃዊ ክፍያ (ብር)"))},modifier=Modifier.fillMaxWidth());OutlinedTextField(grace,{grace=it.filter(Char::isDigit)},label={Text(tr("Grace period (days)","የችሮታ ቀናት"))},modifier=Modifier.fillMaxWidth());OutlinedTextField(penalty,{penalty=it.filter(Char::isDigit)},label={Text(tr("Penalty (ETB)","ቅጣት (ብር)"))},modifier=Modifier.fillMaxWidth());Button(onClick={val a=amount.toIntOrNull();val g=grace.toIntOrNull();val p=penalty.toIntOrNull();if(a!=null&&a>0&&g!=null&&p!=null){db.edit().putInt("amount",a).putInt("grace",g).putInt("penalty",p).apply()}}){Text(tr("Save rules","ደንቦችን አስቀምጥ"))};Text(tr("Saved locally on this phone.","በዚህ ስልክ ላይ ተቀምጧል።"))}
+ else->{Text(tr("Reports / connection status","ሪፖርት / የግንኙነት ሁኔታ"),style=MaterialTheme.typography.titleLarge);Text(tr("Monthly installment: ETB ","ወርሃዊ ክፍያ፦ ብር ")+amount);Text(tr("Grace days: ","የችሮታ ቀናት፦ ")+grace);Text(tr("Penalty: ETB ","ቅጣት፦ ብር ")+penalty);Text(tr("Collector records are not synchronized to this app yet. Do not treat this as a master ledger or use it to approve real funds.","የሰብሳቢ መዝገቦች ገና አልተመሳሰሉም። ይህን ዋና የገንዘብ መዝገብ አድርገው አይጠቀሙ።"))}
+ }
+ }}
+ if(picker)AlertDialog(onDismissRequest={if(lang.isNotBlank())picker=false},title={Text(tr("Choose language","ቋንቋ ይምረጡ"))},text={Column{TextButton(onClick={lang="en";db.edit().putString("lang","en").apply();picker=false}){Text("English")};TextButton(onClick={lang="am";db.edit().putString("lang","am").apply();picker=false}){Text("አማርኛ")}}},confirmButton={TextButton(onClick={picker=false}){Text(tr("Close","ዝጋ"))}})
+ }
 }
