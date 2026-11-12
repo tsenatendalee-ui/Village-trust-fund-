@@ -315,7 +315,7 @@ fun CollectorApp(
         HomeScreen(
             lang = lang,
             members = members,
-            onRecordPayment = { m -> onRecordPayment(m)?.let { confirmation = it } },
+            onRecordPayment = { m -> onRecordPayment(m).also { confirmation = it } },
             onSendReport = onSendReport,
             onOpenSettings = onOpenSettings,
         )
