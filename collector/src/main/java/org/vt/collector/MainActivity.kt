@@ -17,6 +17,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
+import java.security.SecureRandom
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +32,21 @@ private fun firstCollectionSaturday(today: LocalDate = LocalDate.now()): LocalDa
 private fun weeklyDates(first: LocalDate, count: Int): List<LocalDate> =
     (0 until count).map { first.plusWeeks(it.toLong()) }
 
+private fun generateMemberId(existingMembers: String): String {
+    val used = existingMembers.lines().map { it.substringBefore("|") }.toSet()
+    val random = SecureRandom()
+    repeat(9000) {
+        val candidate = (1000 + random.nextInt(9000)).toString()
+        if (candidate !in used) return candidate
+    }
+    throw IllegalStateException("All four-digit member IDs are in use.")
+}
+
+private fun isAmharicFullName(value: String): Boolean {
+    val parts = value.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return parts.size >= 2 && parts.all { part -> part.all { ch -> ch in '\u1200'..'\u137F' } }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Collector(ctx: Context) {
@@ -39,7 +55,7 @@ private fun Collector(ctx: Context) {
     var picker by remember { mutableStateOf(lang.isBlank()) }
     var page by remember { mutableStateOf("home") }
     var name by remember { mutableStateOf("") }
-    var id by remember { mutableStateOf("") }
+    var memberSearch by remember { mutableStateOf("") }
     var payId by remember { mutableStateOf("") }
     var offset by remember { mutableStateOf("0") }
     var installments by remember { mutableStateOf("1") }
@@ -91,22 +107,55 @@ private fun Collector(ctx: Context) {
                     }
                     "members" -> {
                         Text(tr("Register member", "አባል መዝግብ"), style = MaterialTheme.typography.titleLarge)
-                        OutlinedTextField(name, { name = it }, label = { Text(tr("Full name", "ሙሉ ስም")) }, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(id, { id = it }, label = { Text(tr("Member ID", "የአባል መለያ")) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(name, { name = it }, label = { Text(tr("Full name (Amharic only)", "ሙሉ ስም (በአማርኛ ብቻ)")) }, modifier = Modifier.fillMaxWidth())
+                        Text(tr("A unique 4-digit ID is generated automatically after registration.", "ከምዝገባ በኋላ ልዩ ባለ4 አሃዝ መለያ በራስ-ሰር ይፈጠራል።"))
                         Button(onClick = {
-                            val cleanId = id.trim()
-                            if (name.isNotBlank() && cleanId.isNotBlank() && members.lines().none { it.substringBefore("|") == cleanId }) {
-                                members += (if (members.isBlank()) "" else "\n") + cleanId + "|" + name.trim()
-                                db.edit().putString("members", members).commit()
-                                name = ""; id = ""; message = tr("Member saved.", "አባሉ ተመዝግቧል።")
-                            } else message = tr("Enter a name and a unique member ID.", "ስምና ልዩ የአባል መለያ ያስገቡ።")
-                        }) { Text(tr("Save member", "አባል አስቀምጥ")) }
-                        Text(members.replace("|", " — "))
+                            val cleanName = name.trim().replace(Regex("\\s+"), " ")
+                            if (!isAmharicFullName(cleanName)) {
+                                message = tr("Enter the member's full name using Amharic/Ethiopic characters (at least two name parts).", "ሙሉ ስምን በአማርኛ ፊደላት ያስገቡ (ቢያንስ ሁለት የስም ክፍሎች)።")
+                            } else {
+                                try {
+                                    val newId = generateMemberId(members)
+                                    val updated = members + (if (members.isBlank()) "" else "\n") + newId + "|" + cleanName
+                                    if (db.edit().putString("members", updated).commit()) {
+                                        members = updated
+                                        name = ""
+                                        message = tr("Member registered. New ID: ", "አባሉ ተመዝግቧል። አዲስ መለያ፦ ") + newId
+                                    } else message = tr("Registration could not be saved.", "ምዝገባው ሊቀመጥ አልቻለም።")
+                                } catch (_: Exception) {
+                                    message = tr("No unused four-digit IDs are available.", "ነፃ ባለ4 አሃዝ መለያ የለም።")
+                                }
+                            }
+                        }) { Text(tr("Register member and generate ID", "አባል መዝግብና መለያ ፍጠር")) }
+                        OutlinedTextField(memberSearch, { memberSearch = it }, label = { Text(tr("Search members by name or 4-digit ID", "አባላትን በስም ወይም በ4 አሃዝ መለያ ፈልግ")) }, modifier = Modifier.fillMaxWidth())
+                        val filteredMembers = members.lines().filter { line ->
+                            line.isNotBlank() && (line.substringBefore("|").contains(memberSearch.trim(), true) ||
+                                line.substringAfter("|", "").contains(memberSearch.trim(), true))
+                        }
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(filteredMembers) { line ->
+                                Card(Modifier.fillMaxWidth()) {
+                                    Text(line.substringAfter("|") + " — " + line.substringBefore("|"), Modifier.padding(12.dp))
+                                }
+                            }
+                        }
                     }
                     "collect" -> {
                         Text(tr("Record weekly installments", "ሳምንታዊ ክፍያ መዝግብ"), style = MaterialTheme.typography.titleLarge)
                         Text(tr("Weekly installment: ETB ", "የሳምንት ክፍያ፦ ብር ") + amount)
-                        OutlinedTextField(payId, { payId = it }, label = { Text(tr("Member ID", "የአባል መለያ")) }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(payId, { payId = it }, label = { Text(tr("Search by member name or 4-digit ID", "በአባል ስም ወይም ባለ4 አሃዝ መለያ ፈልግ")) }, modifier = Modifier.fillMaxWidth())
+                        val matches = members.lines().filter { line ->
+                            line.isNotBlank() && payId.isNotBlank() &&
+                                (line.substringBefore("|").contains(payId.trim(), true) ||
+                                    line.substringAfter("|", "").contains(payId.trim(), true))
+                        }
+                        if (payId.isNotBlank()) {
+                            matches.take(6).forEach { line ->
+                                TextButton(onClick = { payId = line.substringBefore("|") }) {
+                                    Text(line.substringAfter("|") + " — " + line.substringBefore("|"))
+                                }
+                            }
+                        }
                         OutlinedTextField(offset, { offset = it.filter(Char::isDigit) }, label = { Text(tr("Start offset in weeks (0 = this/next Saturday)", "የመነሻ ሳምንት (0 = ይህ/ቀጣይ ቅዳሜ)")) }, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(installments, { installments = it.filter(Char::isDigit) }, label = { Text(tr("Number of complete weekly installments (1–26)", "ሙሉ ሳምንታዊ ክፍያ ብዛት (1–26)")) }, modifier = Modifier.fillMaxWidth())
                         val s = offset.toIntOrNull() ?: -1
@@ -116,9 +165,13 @@ private fun Collector(ctx: Context) {
                         Text(tr("Collection dates: ", "የክፍያ ቀኖች፦ ") + (dates.firstOrNull()?.toString() ?: "—") + if (dates.size > 1) " … " + dates.last() else "")
                         Text(tr("Total due now: ETB ", "ጠቅላላ ክፍያ፦ ብር ") + (n.coerceAtLeast(0) * amount))
                         Button(onClick = {
-                            val member = members.lines().firstOrNull { it.substringBefore("|") == payId.trim() }
+                            val exactId = members.lines().firstOrNull { it.substringBefore("|") == payId.trim() }
+                            val exactNameMatches = members.lines().filter { it.substringAfter("|", "").equals(payId.trim(), true) }
+                            val member = exactId ?: exactNameMatches.singleOrNull()
                             when {
-                                member == null -> message = tr("Member not found.", "አባሉ አልተገኘም።")
+                                member == null -> message = if (exactNameMatches.size > 1)
+                                    tr("More than one member has that name. Search and select the 4-digit ID.", "ከአንድ በላይ አባል ተመሳሳይ ስም አላቸው። በ4 አሃዝ መለያ ፈልገው ይምረጡ።")
+                                    else tr("Member not found. Search by name or ID and select the member.", "አባሉ አልተገኘም። በስም ወይም በመለያ ፈልገው ይምረጡ።")
                                 s < 0 || n !in 1..26 -> message = tr("Choose 1–26 complete weekly installments.", "ከ1 እስከ 26 ሙሉ ሳምንታዊ ክፍያዎችን ይምረጡ።")
                                 first.plusWeeks((n - 1).toLong()).isAfter(firstCollectionSaturday().plusMonths(6)) ->
                                     message = tr("Advance payment cannot go beyond six months.", "ቅድሚያ ክፍያ ከ6 ወር በላይ አይፈቀድም።")
