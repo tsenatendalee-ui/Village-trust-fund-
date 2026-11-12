@@ -60,12 +60,19 @@ private fun Supervisor(ctx: Context) {
             require(sha256(payload.toString()) == envelope.optString("sha256")) { "Report integrity check failed." }
             require(payload.optString("collectorId") == "PRIMARY_COLLECTOR") { "Unknown collector." }
 
-            val knownMembers = (db.getString("importedMembers", "") ?: "").lines().filter { it.isNotBlank() }.toMutableSet()
+            val memberMap = linkedMapOf<String, String>()
+            (db.getString("importedMembers", "") ?: "").lines().filter { it.isNotBlank() }.forEach { line ->
+                memberMap[line.substringBefore("|")] = line
+            }
             val memberArray = payload.optJSONArray("members") ?: JSONArray()
             var newMembers = 0
             for (i in 0 until memberArray.length()) {
                 val line = memberArray.optString(i)
-                if (line.isNotBlank() && knownMembers.add(line.substringBefore("|"))) newMembers++
+                val memberId = line.substringBefore("|")
+                if (line.contains("|") && memberId.isNotBlank() && !memberMap.containsKey(memberId)) {
+                    memberMap[memberId] = line
+                    newMembers++
+                }
             }
 
             val ledger = try { JSONArray(db.getString("importedPayments", "[]")) } catch (_: Exception) { JSONArray() }
@@ -96,7 +103,7 @@ private fun Supervisor(ctx: Context) {
                 accepted++
             }
             val ok = db.edit()
-                .putString("importedMembers", knownMembers.joinToString("\n"))
+                .putString("importedMembers", memberMap.values.joinToString("\n"))
                 .putString("importedPayments", ledger.toString())
                 .putString("lastReportAt", Instant.now().toString())
                 .commit()
