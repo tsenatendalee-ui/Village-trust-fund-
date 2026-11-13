@@ -33,7 +33,11 @@ class AccountingTests(unittest.TestCase):
         eid = self.f.record_payment("VT-0001-8", "2026-01-03", 1, "2026-01-03", "collector")
         self.f.reverse_event(eid, "supervisor", "wrong member selected", "2026-01-04")
         self.assertEqual(self.f.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 2)
-        self.assertEqual(self.f.db.execute("SELECT COUNT(*) FROM allocations").fetchone()[0], 0)
+        self.assertEqual(self.f.db.execute("SELECT COUNT(*) FROM allocations WHERE active=1").fetchone()[0], 0)
+        self.assertEqual(self.f.db.execute("SELECT COUNT(*) FROM allocations").fetchone()[0], 1)
+        # A corrected payment may reuse the Saturday, while the old allocation remains auditable.
+        self.f.record_payment("VT-0001-8", "2026-01-03", 1, "2026-01-05", "collector")
+        self.assertEqual(self.f.db.execute("SELECT COUNT(*) FROM allocations WHERE active=1").fetchone()[0], 1)
 
     def test_only_supervisor_can_reactivate(self):
         self.f.db.execute("UPDATE members SET status='FROZEN' WHERE member_id='VT-0001-8'")
