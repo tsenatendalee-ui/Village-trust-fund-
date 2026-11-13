@@ -31,3 +31,7 @@ This is a one-collector / one-supervisor system. Do not build multi-collector as
 ## Important status
 The Android apps are still prototype software and are not approved for live financial collection. A successful CI build only confirms compilation; it does not prove correct accounting, secure storage, reliable transfer, or device-level behavior. Before real use, implement and test durable storage, audit/correction handling, report validation, and the complete accounting rules.
 
+
+## Accounting and recovery foundation
+
+A server-side prototype and unit tests are available in `server/vt_accounting.py` and `server/test_vt_accounting.py`. See `docs/IMPLEMENTATION_STATUS.md` for the six-task delivery checklist and remaining production blockers. This module is not yet connected to the Android apps and is not approved for live financial collection.
