@@ -20,13 +20,21 @@ On a newly installed Collector, the authorized operator must sign in / register 
 ### Inactive-member handling during operational restore
 
 - A member with no successful installment for more than **6 consecutive months** is marked **Frozen / Inactive** in the restored Collector register by default. The threshold must be configurable by the Supervisor; the 6-month threshold is the initial default.
-- Frozen members remain searchable and visible in a separate inactive list with their ID, name, last payment date, arrears/status and relevant notes. Their identity records must not be deleted or their IDs reused.
-- Frozen members are excluded from the routine active collection list until explicitly reactivated by the Supervisor (or by the approved reactivation workflow). Reactivation must preserve their prior ledger and outstanding obligations.
+- Frozen and long-term inactive members remain searchable in a separate inactive list with only operationally necessary details: ID, name, last successful payment date, missed installments, calculated outstanding fine, total outstanding balance and status. Their identity records must not be deleted or their IDs reused.
+- **Only the Supervisor can reactivate** a frozen or long-term inactive member. The Collector cannot reactivate them or accept routine contributions for them until the Supervisor records the reactivation.
+- On reactivation, the member must settle the outstanding fine/arrears calculated under the **same general penalty rules used for regular members**. There is no separate inactive-member penalty rate or arbitrary reactivation fee. Apply the rule/version and grace period that governed each missed due date; do not retroactively impose a newly changed rule. Record any payment, waiver or correction as an auditable ledger event.
+- Reactivation must preserve the member's full prior financial position and must not erase unpaid obligations.
 - The restore must also flag members with no successful installment during the entire 12-month lookback as long-term inactive exceptions. They must be included in the restored register/status snapshot even though their older routine transaction history is not downloaded.
 - Do not infer that a member has paid merely because a transaction exists: only a valid, accepted installment allocation counts. Reversed or voided allocations do not reset the inactivity clock.
 - The app must show the lookback period, inactivity threshold, count of active members and count of frozen/long-term inactive members before the operator confirms the restore.
 
 The Collector must validate the package, show a restore preview, and commit it atomically. It must not begin normal collection until the restore has completed and the active rules and ledger state are verified. Existing local unsynchronized events must be exported/recovered before replacing local data; never silently overwrite them.
+
+### Operational-data-only restore (avoid junk)
+
+The Collector restore must be deliberately lean. Include only data required to identify members, determine who can pay, collect the correct installment, prevent duplicate allocations, calculate current obligations, and continue synchronization: current member roster/status; stable member IDs; last successful installment date; current arrears and penalty totals; the rolling 12-month transaction/allocation history; outstanding and future advance allocations; active rule values/version/effective dates; and the last acknowledged sync cursor. Include the minimum transaction references needed to trace corrections and reversals.
+
+Do **not** routinely download the full all-time ledger, old receipt images, duplicate report files, verbose diagnostic logs, obsolete configuration copies, or unrelated historical attachments to the Collector. Keep full historical records securely on the server for Supervisor audit and targeted retrieval when needed. The restore preview must show the package date, lookback period, record counts and data categories so the operator can reject an unexpectedly large or irrelevant package.
 
 A restore must preserve all existing member IDs. Do not regenerate IDs after reinstall. ID allocation must be server-coordinated or based on a reserved ID range so a replacement device cannot accidentally reuse an existing ID.
 
