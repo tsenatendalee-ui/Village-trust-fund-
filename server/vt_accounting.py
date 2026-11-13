@@ -41,9 +41,10 @@ class TrustFund:
           FOREIGN KEY(member_id) REFERENCES members(member_id));
         CREATE TABLE IF NOT EXISTS allocations(
           member_id TEXT NOT NULL, due_saturday TEXT NOT NULL,
-          event_id TEXT NOT NULL, amount INTEGER NOT NULL,
-          PRIMARY KEY(member_id,due_saturday),
+          event_id TEXT NOT NULL, amount INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1,
           FOREIGN KEY(event_id) REFERENCES events(event_id));
+        CREATE UNIQUE INDEX IF NOT EXISTS one_active_member_due
+          ON allocations(member_id,due_saturday) WHERE active=1;
         CREATE INDEX IF NOT EXISTS events_member_date ON events(member_id,occurred_on);
         """)
         self.db.commit()
@@ -75,9 +76,9 @@ class TrustFund:
         if not name.strip() or not actor.strip() or not reason.strip():
             raise RuleError("Name, actor and reason are required.")
         with self.db:
-            self.db.execute("UPDATE members SET name=? WHERE member_id=?",
-                            (name.strip(), member_id))
-            if self.db.total_changes == 0:
+            cur = self.db.execute("UPDATE members SET name=? WHERE member_id=?",
+                                  (name.strip(), member_id))
+            if cur.rowcount == 0:
                 raise RuleError("Member not found.")
             self._event("member_update", member_id, 0, date.today().isoformat(),
                         actor, reason, payload={"new_name": name.strip()})
@@ -123,7 +124,7 @@ class TrustFund:
         with self.db:
             for due in dates:
                 exists = self.db.execute("""SELECT 1 FROM allocations
-                  WHERE member_id=? AND due_saturday=?""",
+                  WHERE member_id=? AND due_saturday=? AND active=1""",
                   (member_id, due.isoformat())).fetchone()
                 if exists:
                     raise RuleError("Duplicate member/Saturday allocation: " + due.isoformat())
@@ -131,9 +132,10 @@ class TrustFund:
                               paid_on, actor, config_version=cfg["version"],
                               payload={"installments": installments,
                                        "allocation_dates": [d.isoformat() for d in dates]})
-            self.db.executemany("""INSERT INTO allocations
-              (member_id,due_saturday,event_id,amount) VALUES(?,?,?,?)""",
-              [(member_id, d.isoformat(), eid, cfg["weekly_amount"]) for d in dates])
+            for d in dates:
+                self.db.execute("""INSERT INTO allocations
+                  (member_id,due_saturday,event_id,amount,active) VALUES(?,?,?,?,1)""",
+                  (member_id, d.isoformat(), eid, cfg["weekly_amount"]))
             self.db.execute("UPDATE members SET last_paid_on=? WHERE member_id=?",
                             (max(dates).isoformat(), member_id))
         return eid
@@ -175,7 +177,7 @@ class TrustFund:
                                    occurred_on, actor, reason, ref_event_id=event_id,
                                    config_version=original["config_version"])
             if original["kind"] == "payment":
-                self.db.execute("DELETE FROM allocations WHERE event_id=?", (event_id,))
+                self.db.execute("UPDATE allocations SET active=0 WHERE event_id=?", (event_id,))
                 self.db.execute("UPDATE members SET last_paid_on=? WHERE member_id=?",
                                 (self._last_valid_payment_date(original["member_id"]),
                                  original["member_id"]))
@@ -243,7 +245,7 @@ class TrustFund:
           WHERE occurred_on>=? AND occurred_on<=? ORDER BY occurred_on,event_id""",
           (cutoff.isoformat(), as_of))]
         allocations = [dict(r) for r in self.db.execute("""SELECT a.* FROM allocations a
-          WHERE a.due_saturday>=? AND NOT EXISTS(
+          WHERE a.due_saturday>=? AND a.active=1 AND NOT EXISTS(
             SELECT 1 FROM events r WHERE r.kind='reversal' AND r.ref_event_id=a.event_id)
           ORDER BY a.due_saturday""", (as_of,))]
         cfg = self.db.execute("""SELECT * FROM configs WHERE effective_from<=?
