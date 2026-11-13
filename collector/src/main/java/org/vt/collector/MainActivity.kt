@@ -302,7 +302,7 @@ private fun Collector(ctx: Context) {
         }
         paidReceipt?.let { receipt ->
             AlertDialog(
-                onDismissRequest = { paidReceipt = null },
+                onDismissRequest = { /* Receipt must be explicitly acknowledged with Done after showing it to the member. */ },
                 title = {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                         Text("✓", fontSize = 64.sp, color = androidx.compose.ui.graphics.Color(0xFF087A35), fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
