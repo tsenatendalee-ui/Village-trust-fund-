@@ -22,7 +22,7 @@ class AccountingTests(unittest.TestCase):
         event = self.f.db.execute("SELECT * FROM events WHERE event_id=?", (eid,)).fetchone()
         self.assertEqual(event["amount"], 300)
         with self.assertRaises(RuleError):
-            self.f.record_payment("VT-0001-8", "2026-01-03", 26, "2026-01-03", "collector")
+            self.f.record_payment("VT-0001-8", "2026-01-03", 27, "2026-01-03", "collector")
 
     def test_penalty_uses_selected_rule_version_and_is_idempotent(self):
         self.f.post_penalty("VT-0001-8", "2026-01-03", "2026-01-10", "supervisor", 1)
