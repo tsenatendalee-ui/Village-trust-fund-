@@ -137,7 +137,7 @@ class TrustFund:
                   (member_id,due_saturday,event_id,amount,active) VALUES(?,?,?,?,1)""",
                   (member_id, d.isoformat(), eid, cfg["weekly_amount"]))
             self.db.execute("UPDATE members SET last_paid_on=? WHERE member_id=?",
-                            (max(dates).isoformat(), member_id))
+                            (paid_on, member_id))
         return eid
 
     def post_penalty(self, member_id: str, due_saturday: str, posted_on: str,
