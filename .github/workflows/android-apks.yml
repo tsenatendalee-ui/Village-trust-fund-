@@ -1,6 +1,8 @@
 name: Build Android APKs
 on:
   push:
+    branches: [ main, 'feature/**' ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 permissions:
@@ -11,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run accounting and recovery tests
+        run: python -m unittest discover -s server -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

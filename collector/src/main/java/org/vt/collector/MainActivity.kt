@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.DayOfWeek
@@ -72,6 +73,7 @@ private fun Collector(ctx: Context) {
     fun tr(en: String, amh: String) = if (am) amh else en
     var amount by remember { mutableIntStateOf(db.getInt("installment", 100)) }
     var transferMessage by remember { mutableStateOf("") }
+    var paidReceipt by remember { mutableStateOf<JSONObject?>(null) }
     var pendingExport by remember { mutableStateOf("") }
     val exportReport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try {
@@ -244,7 +246,8 @@ private fun Collector(ctx: Context) {
                                                 val ok = db.edit().putString("payments_v2", latest.toString()).commit()
                                                 if (ok) {
                                                     records = latest.toString()
-                                                    message = tr("Payment recorded once. $n Saturday installment(s) allocated.", "ክፍያው አንድ ጊዜ ተመዝግቧል። $n ሳምንታዊ ክፍያ(ዎች) ተመድበዋል።")
+                                                    paidReceipt = tx
+                                                    message = ""
                                                     payId = ""; installments = "1"; offset = "0"
                                                 } else message = tr("Could not save payment. Nothing was confirmed.", "ክፍያው ሊቀመጥ አልቻለም።")
                                             }
@@ -296,6 +299,32 @@ private fun Collector(ctx: Context) {
                     }
                 }
             }
+        }
+        paidReceipt?.let { receipt ->
+            AlertDialog(
+                onDismissRequest = { /* Receipt must be explicitly acknowledged with Done after showing it to the member. */ },
+                title = {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        Text("✓", fontSize = 64.sp, color = androidx.compose.ui.graphics.Color(0xFF087A35), fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
+                        Text(tr("PAID", "ተከፍሏል"), fontSize = 52.sp, color = androidx.compose.ui.graphics.Color(0xFF087A35), fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
+                    }
+                },
+                text = {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(receipt.optString("memberName"), fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text(receipt.optString("memberId"), fontSize = 22.sp)
+                        Text("ETB " + receipt.optInt("amountBirr"), fontSize = 30.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text(receipt.optString("recordedAt").replace("T", " ").take(19), fontSize = 17.sp)
+                        Text(tr("Show this PAID confirmation to the member before closing.", "ይህንን የተከፈለ ማረጋገጫ ከመዝጋትዎ በፊት ለአባሉ ያሳዩ።"), fontSize = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text(tr("Receipt: ", "ደረሰኝ፦ ") + receipt.optString("transactionId").take(8).uppercase(), fontSize = 16.sp)
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { paidReceipt = null; page = "home" }) {
+                        Text(tr("Done", "ተጠናቋል"), fontSize = 18.sp)
+                    }
+                }
+            )
         }
         if (picker) AlertDialog(
             onDismissRequest = { if (lang.isNotBlank()) picker = false },
