@@ -8,15 +8,23 @@ The apps must continue to work offline. They queue locally created events and sy
 
 ## Collector: full recovery after reinstall or phone replacement
 
-On a newly installed Collector, the authorized operator must sign in / register the replacement device and request **Restore Collector**. The backend must return a complete current bootstrap package containing:
+On a newly installed Collector, the authorized operator must sign in / register the replacement device and request **Restore Collector**. This is an **operational restore**, not a five-year historical archive download. The backend must return a compact, authoritative snapshot containing:
 
 - Fund identity and active configuration, including configuration version and effective date.
-- Full member register, all member IDs and registration details.
-- Complete payment transaction history and each weekly Saturday allocation.
-- Advance-payment transactions and all future installment allocations already covered.
-- Penalty assessments, waivers, reversals/corrections and their audit references.
-- Current paid/unpaid status and outstanding balances, derived from the ledger.
+- The complete member identity/ID register and each member's operational status, including last successful payment date and current arrears/outstanding balance. This is necessary to identify long-inactive members without downloading years of routine payment records.
+- The rolling **most recent 12 months** of payment transactions and weekly Saturday allocations, sufficient to resume current collection and reconcile recent activity.
+- Every outstanding obligation and every future installment already covered by an advance payment, even if the original advance transaction is older than 12 months.
+- All currently relevant penalties, waivers, reversals/corrections and audit references needed to calculate the present position. Historical items outside the 12-month window remain on the server and can be retrieved by the Supervisor for audit; they are not routinely pushed to the Collector.
 - Last accepted synchronization cursor / event sequence and integrity metadata.
+
+### Inactive-member handling during operational restore
+
+- A member with no successful installment for more than **6 consecutive months** is marked **Frozen / Inactive** in the restored Collector register by default. The threshold must be configurable by the Supervisor; the 6-month threshold is the initial default.
+- Frozen members remain searchable and visible in a separate inactive list with their ID, name, last payment date, arrears/status and relevant notes. Their identity records must not be deleted or their IDs reused.
+- Frozen members are excluded from the routine active collection list until explicitly reactivated by the Supervisor (or by the approved reactivation workflow). Reactivation must preserve their prior ledger and outstanding obligations.
+- The restore must also flag members with no successful installment during the entire 12-month lookback as long-term inactive exceptions. They must be included in the restored register/status snapshot even though their older routine transaction history is not downloaded.
+- Do not infer that a member has paid merely because a transaction exists: only a valid, accepted installment allocation counts. Reversed or voided allocations do not reset the inactivity clock.
+- The app must show the lookback period, inactivity threshold, count of active members and count of frozen/long-term inactive members before the operator confirms the restore.
 
 The Collector must validate the package, show a restore preview, and commit it atomically. It must not begin normal collection until the restore has completed and the active rules and ledger state are verified. Existing local unsynchronized events must be exported/recovered before replacing local data; never silently overwrite them.
 
